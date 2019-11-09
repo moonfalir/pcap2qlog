@@ -1,7 +1,7 @@
 
 import * as fs from "fs";
 import {promisify} from "util";
-import {ParserPCAP} from "../parsers/ParserPCAP";
+import {ParserPCAPQuic} from "../parsers/ParserPCAPQuic";
 import * as qlog from "@quictools/qlog-schema";
 
 
@@ -30,7 +30,7 @@ export class JSONToQLog{
 
         // TODO: properly deal with different versions of QUIC and address the correct parser
         // see how we did this in @quictools/qlog-schema and replicate something similar here
-        let qlog:qlog.IQLog = ParserPCAP.Parse( jsonContents, originalFile, logRawPayloads, secretsContents );
+        let qlog:qlog.IQLog = ParserPCAPQuic.Parse( jsonContents, originalFile, logRawPayloads, secretsContents );
 
         // we could write this to file directly now
         // BUT we want to aggregate possible different IQLogs together in 1 combined/grouped IQLog before writing the final output
