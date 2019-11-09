@@ -2,6 +2,7 @@
 import * as fs from "fs";
 import {promisify} from "util";
 import {ParserPCAPQuic} from "../parsers/ParserPCAPQuic";
+import {ParserPCAPTcp} from "../parsers/ParserPCAPTcp";
 import * as qlog from "@quictools/qlog-schema";
 
 
@@ -31,10 +32,12 @@ export class JSONToQLog{
         // TODO: properly deal with different versions of QUIC and address the correct parser
         // see how we did this in @quictools/qlog-schema and replicate something similar here
         let qlog:qlog.IQLog;
-        
         switch (qlogProtocol) {
             case "quic":
                 qlog = ParserPCAPQuic.Parse( jsonContents, originalFile, logRawPayloads, secretsContents );
+                break;
+            case "tcp":
+                qlog = ParserPCAPTcp.Parse( jsonContents, originalFile, logRawPayloads);
                 break;
             default:
                 qlog = ParserPCAPQuic.Parse( jsonContents, originalFile, logRawPayloads, secretsContents );
