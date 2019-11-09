@@ -46,6 +46,7 @@ let output_directory: string     = args.o || args.output    || "/srv/qvis-cache"
 let output_path: string          = args.p || args.outputpath;   // output will be placed in args.p  and temp storage is  args.o/inputs/
 let tsharkLocation: string       = args.t || args.tshark || "/wireshark/run/tshark"; // Path to the TShark executable
 let logRawPayloads: boolean      = args.r || args.raw || false; // If set to false, raw decrypted payloads will not be logged. This is default behaviour as payloads have a huge impact on log size.
+let qlogProtocol: string        = args.q || args.qlogprotocol || "quic"; // Defines what protocol will be parsed for qlog file.
 
 if( !input_file && !input_list ){
     console.error("No input file or list of files specified, use --input or --list");
@@ -217,7 +218,7 @@ async function Flow() {
 
         try{
             // we don't write to file here, but pass the qlog object around directly to write a combined file later
-            capt.qlog = await JSONToQLog.TransformToQLog( capt.capture, tempDirectory, capt.capture_original, logRawPayloads, capt.secrets );
+            capt.qlog = await JSONToQLog.TransformToQLog( capt.capture, tempDirectory, capt.capture_original, logRawPayloads, qlogProtocol, capt.secrets);
         }
         catch(e){
             capt.error = e;
