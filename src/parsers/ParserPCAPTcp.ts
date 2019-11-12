@@ -1,5 +1,5 @@
 import * as qlog from "@quictools/qlog-schema";
-import {VantagePointType, IDefaultEventFieldNames, EventField} from "@quictools/qlog-schema";
+import {VantagePointType, IDefaultEventFieldNames, EventField, IEventPacket, PacketType, IStreamFrame, QUICFrameTypeName, TransportEventType, EventCategory, QuicFrame} from "@quictools/qlog-schema";
 
 export class ParserPCAPTcp {
         public clientIp_Port: string;
@@ -48,8 +48,95 @@ export class ParserPCAPTcp {
             this.trace.events.push(event);
         }
 
+        // Based on tcp flags it returns the packet type
+        public getPacketType(jsonPacketFlags: any): PacketType {
+            if (jsonPacketFlags["tcp.flags.syn"] === "1"){
+                if (jsonPacketFlags["tcp.flags.ack"] === "0")
+                    return PacketType.initial;
+                else
+                    return PacketType.handshake;
+            }
+            else
+                return PacketType.onertt;
+        }
+
+        public static extractPayloadFrame(jsonPacket: any, parser: ParserPCAPTcp, logRawPayloads: boolean): IStreamFrame {
+            return {
+                frame_type: QUICFrameTypeName.stream,
+
+                stream_id: "0",
+
+                offset: jsonPacket["tcp.seq"],
+                length: jsonPacket["tcp.len"],
+
+                fin: jsonPacket["tcp.flags_tree"]["tcp.flags.fin"] === "1",
+                raw: logRawPayloads ? jsonPacket["data"]["data.data"].replace(/:/g, '') : undefined,
+            };
+        }
+
+        public static extractQlogFrames(jsonPacket: any, parser: ParserPCAPTcp, logRawPayloads: boolean): Array<QuicFrame> {
+            let frames = Array<QuicFrame>();
+            // If a packet both contains an ack and data, extract data from both. If packet length is 0, only an ack will be parsed
+            if (jsonPacket["tcp.flags_tree"]["tcp.flags.ack"] === "1" && jsonPacket["len"] !== "0") {
+                frames.push(ParserPCAPTcp.extractPayloadFrame(jsonPacket, parser, logRawPayloads));
+            }
+            // if fin bit, parse conn close
+            /*if (jsonPacket["tcp.flags_tree"]["tcp.flags.fin"] === "1") {
+                frames.push(ParserPCAPTcp.extractPayloadFrame(jsonPacket, parser, logRawPayloads));
+            }
+            // if reset bit, parse conn error
+            if (jsonPacket["tcp.flags_tree"]["tcp.flags.reset"] === "1") {
+                frames.push(ParserPCAPTcp.extractPayloadFrame(jsonPacket, parser, logRawPayloads));
+            }
+            //parse ack
+            if (jsonPacket["tcp.flags_tree"]["tcp.flags.ack"] === "1") {
+                frames.push(ParserPCAPTcp.extractPayloadFrame(jsonPacket, parser, logRawPayloads));
+            }*/
+
+            return frames;
+        }
+
         public static Parse(jsonContents:any, originalFile: string, logRawPayloads: boolean):qlog.IQLog {
             let pcapParser = new ParserPCAPTcp( jsonContents, originalFile );
+
+            for ( let packet of jsonContents ) {
+                let frame = packet['_source']['layers']['frame'];
+                let tcp = packet['_source']['layers']['tcp'];
+
+                let time = parseFloat(frame['frame.time_epoch']);
+                let time_relative: number = pcapParser.trace.common_fields !== undefined && pcapParser.trace.common_fields.reference_time !== undefined ? Math.round((time - parseFloat(pcapParser.trace.common_fields.reference_time)) * 1000) : -1;
+                function extractEventsFromPacket(jsonPacket:any, ip: string, port: string) {
+                    let header = {} as qlog.IPacketHeader;
+
+                    header.version = "";
+                    header.scid = jsonPacket['tcp.srcport'];
+                    header.dcid = jsonPacket['tcp.dstport'];
+                    header.scil = "";
+                    header.dcil = "";
+                    header.payload_length = parseInt(jsonPacket['tcp.len']);
+                    header.packet_number = jsonPacket['tcp.seq'];
+                    header.packet_size = parseInt(jsonPacket['tcp.len']) + parseInt(jsonPacket["tcp.hdr_len"]);
+
+                    const entry: IEventPacket = {
+                        packet_type: pcapParser.getPacketType(jsonPacket["tcp.flags_tree"]),
+                        header: header,
+                    };
+
+                    entry.frames = ParserPCAPTcp.extractQlogFrames(jsonPacket, pcapParser, logRawPayloads);
+
+                    const curr_Ip_Port = ip + "_" + port;
+                    const transportEventType: TransportEventType = pcapParser.clientIp_Port === curr_Ip_Port ? TransportEventType.packet_sent : TransportEventType.packet_received;
+
+                    pcapParser.addEvent([
+                        time_relative.toString(),
+                        EventCategory.transport,
+                        transportEventType,
+                        entry
+                    ]);
+                }
+                if (tcp)
+                    extractEventsFromPacket(tcp, packet['_source']['layers']['ip']['ip.src_host'], packet['_source']['layers']['tcp']['tcp.srcport']);
+            }
 
             let output: qlog.IQLog;
             output = {
