@@ -1,5 +1,5 @@
 import * as qlog from "@quictools/qlog-schema";
-import {VantagePointType, IDefaultEventFieldNames, EventField, IEventPacket, PacketType, IStreamFrame, QUICFrameTypeName, TransportEventType, EventCategory, QuicFrame} from "@quictools/qlog-schema";
+import {VantagePointType, IDefaultEventFieldNames, EventField, IEventPacket, PacketType, IStreamFrame, QUICFrameTypeName, TransportEventType, EventCategory, QuicFrame, IConnectionCloseFrame} from "@quictools/qlog-schema";
 
 export class ParserPCAPTcp {
         public clientIp_Port: string;
@@ -74,20 +74,33 @@ export class ParserPCAPTcp {
             };
         }
 
+        public static extractConnClose(jsonPacket: any, parser: ParserPCAPTcp, logRawPayloads: boolean, isError: boolean): IConnectionCloseFrame {
+            return {
+                frame_type: QUICFrameTypeName.connection_close,
+                // TODO add no error
+                error_space: isError ? qlog.ErrorSpace.transport_error : qlog.ErrorSpace.transport_error,
+                error_code: 0,
+                raw_error_code: 0,
+                reason: "End of transfer",
+
+                trigger_frame_type: 0
+            };
+        }
+
         public static extractQlogFrames(jsonPacket: any, parser: ParserPCAPTcp, logRawPayloads: boolean): Array<QuicFrame> {
             let frames = Array<QuicFrame>();
             // If a packet both contains an ack and data, extract data from both. If packet length is 0, only an ack will be parsed
-            if (jsonPacket["tcp.flags_tree"]["tcp.flags.ack"] === "1" && jsonPacket["len"] !== "0") {
+            if (jsonPacket["len"] !== "0") {
                 frames.push(ParserPCAPTcp.extractPayloadFrame(jsonPacket, parser, logRawPayloads));
             }
             // if fin bit, parse conn close
-            /*if (jsonPacket["tcp.flags_tree"]["tcp.flags.fin"] === "1") {
-                frames.push(ParserPCAPTcp.extractPayloadFrame(jsonPacket, parser, logRawPayloads));
+            if (jsonPacket["tcp.flags_tree"]["tcp.flags.fin"] === "1") {
+                frames.push(ParserPCAPTcp.extractConnClose(jsonPacket, parser, logRawPayloads, false));
             }
             // if reset bit, parse conn error
             if (jsonPacket["tcp.flags_tree"]["tcp.flags.reset"] === "1") {
-                frames.push(ParserPCAPTcp.extractPayloadFrame(jsonPacket, parser, logRawPayloads));
-            }
+                frames.push(ParserPCAPTcp.extractConnClose(jsonPacket, parser, logRawPayloads, true));
+            }/*
             //parse ack
             if (jsonPacket["tcp.flags_tree"]["tcp.flags.ack"] === "1") {
                 frames.push(ParserPCAPTcp.extractPayloadFrame(jsonPacket, parser, logRawPayloads));
