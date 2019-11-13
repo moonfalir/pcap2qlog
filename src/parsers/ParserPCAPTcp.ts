@@ -1,5 +1,5 @@
 import * as qlog from "@quictools/qlog-schema";
-import {VantagePointType, IDefaultEventFieldNames, EventField, IEventPacket, PacketType, IStreamFrame, QUICFrameTypeName, TransportEventType, EventCategory, QuicFrame, IConnectionCloseFrame} from "@quictools/qlog-schema";
+import {VantagePointType, IDefaultEventFieldNames, EventField, IEventPacket, PacketType, IStreamFrame, QUICFrameTypeName, TransportEventType, EventCategory, QuicFrame, IConnectionCloseFrame, IAckFrame} from "@quictools/qlog-schema";
 
 export class ParserPCAPTcp {
         public clientIp_Port: string;
@@ -60,7 +60,7 @@ export class ParserPCAPTcp {
                 return PacketType.onertt;
         }
 
-        public static extractPayloadFrame(jsonPacket: any, parser: ParserPCAPTcp, logRawPayloads: boolean): IStreamFrame {
+        public static extractPayloadFrame(jsonPacket: any, logRawPayloads: boolean): IStreamFrame {
             return {
                 frame_type: QUICFrameTypeName.stream,
 
@@ -74,7 +74,7 @@ export class ParserPCAPTcp {
             };
         }
 
-        public static extractConnClose(jsonPacket: any, parser: ParserPCAPTcp, logRawPayloads: boolean, isError: boolean): IConnectionCloseFrame {
+        public static extractConnClose(isError: boolean): IConnectionCloseFrame {
             return {
                 frame_type: QUICFrameTypeName.connection_close,
                 // TODO add no error
@@ -86,25 +86,26 @@ export class ParserPCAPTcp {
                 trigger_frame_type: 0
             };
         }
+        
 
         public static extractQlogFrames(jsonPacket: any, parser: ParserPCAPTcp, logRawPayloads: boolean): Array<QuicFrame> {
             let frames = Array<QuicFrame>();
             // If a packet both contains an ack and data, extract data from both. If packet length is 0, only an ack will be parsed
             if (jsonPacket["len"] !== "0") {
-                frames.push(ParserPCAPTcp.extractPayloadFrame(jsonPacket, parser, logRawPayloads));
+                frames.push(ParserPCAPTcp.extractPayloadFrame(jsonPacket, logRawPayloads));
             }
             // if fin bit, parse conn close
             if (jsonPacket["tcp.flags_tree"]["tcp.flags.fin"] === "1") {
-                frames.push(ParserPCAPTcp.extractConnClose(jsonPacket, parser, logRawPayloads, false));
+                frames.push(ParserPCAPTcp.extractConnClose(false));
             }
             // if reset bit, parse conn error
             if (jsonPacket["tcp.flags_tree"]["tcp.flags.reset"] === "1") {
-                frames.push(ParserPCAPTcp.extractConnClose(jsonPacket, parser, logRawPayloads, true));
-            }/*
-            //parse ack
+                frames.push(ParserPCAPTcp.extractConnClose(true));
+            }
+            // parse ack
             if (jsonPacket["tcp.flags_tree"]["tcp.flags.ack"] === "1") {
-                frames.push(ParserPCAPTcp.extractPayloadFrame(jsonPacket, parser, logRawPayloads));
-            }*/
+                frames.push(ParserPCAPTcp.extractAckHeader(jsonPacket));
+            }
 
             return frames;
         }
@@ -160,6 +161,22 @@ export class ParserPCAPTcp {
             };
 
             return output;
+        }
+
+        public static extractAckHeader(jsonPacket: any): IAckFrame {
+            const isEcn: boolean = jsonPacket["tcp.flags_tree"]["tcp.flags.ecn"] === "1" ? true : false;
+            const ackedRanges: [string, string][] = [];
+            let topAck: number = parseInt(jsonPacket["tcp.ack"]);
+
+            ackedRanges.push([jsonPacket["tcp.ack"], jsonPacket["tcp.ack"]]);
+            return {
+                frame_type: QUICFrameTypeName.ack,
+                ack_delay: undefined,
+                acked_ranges: ackedRanges,
+                ce: isEcn ? "1" : undefined,
+                ect0: undefined,
+                ect1: undefined,
+            };
         }
 
         public getStartTime(): number {
