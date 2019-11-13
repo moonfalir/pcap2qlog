@@ -169,6 +169,24 @@ export class ParserPCAPTcp {
             let topAck: number = parseInt(jsonPacket["tcp.ack"]);
 
             ackedRanges.push([jsonPacket["tcp.ack"], jsonPacket["tcp.ack"]]);
+
+            const sacks = jsonPacket["tcp.options_tree"]["tcp.options.sack_tree"];
+            // If selective acks are present, add those ranges to the ack frame
+            if (sacks) {
+                const sack_count = parseInt(sacks["tcp.options.sack.count"]);
+                const left_edges = sacks["tcp.options.sack_le"];
+                const right_edges = sacks["tcp.options.sack_re"];
+ 
+                // When only 2 or more sacks are present, ack edges are an array
+                // else ack edges are just strings
+                if (sack_count > 1) {
+                    for (let index = 0; index < sack_count; index++) {
+                        ackedRanges.push([left_edges[index], right_edges[index]]);
+                    }
+                }
+                else
+                    ackedRanges.push([left_edges, right_edges]);
+            }
             return {
                 frame_type: QUICFrameTypeName.ack,
                 ack_delay: undefined,
