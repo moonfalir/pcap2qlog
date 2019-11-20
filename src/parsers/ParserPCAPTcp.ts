@@ -1,5 +1,5 @@
 import * as qlog from "@quictools/qlog-schema";
-import {VantagePointType, IDefaultEventFieldNames, EventField, IEventPacket, PacketType, IStreamFrame, QUICFrameTypeName, TransportEventType, EventCategory, QuicFrame, IConnectionCloseFrame, IAckFrame} from "@quictools/qlog-schema";
+import {VantagePointType, IDefaultEventFieldNames, EventField, IEventPacket, PacketType, IStreamFrame, QUICFrameTypeName, TransportEventType, EventCategory, QuicFrame, IConnectionCloseFrame, IAckFrame, IMaxDataFrame} from "@quictools/qlog-schema";
 
 export class ParserPCAPTcp {
         public clientIp_Port: string;
@@ -107,6 +107,8 @@ export class ParserPCAPTcp {
                 frames.push(ParserPCAPTcp.extractAckHeader(jsonPacket));
             }
 
+            frames.push(ParserPCAPTcp.extractFlowControl(jsonPacket));
+
             return frames;
         }
 
@@ -161,6 +163,14 @@ export class ParserPCAPTcp {
             };
 
             return output;
+        }
+
+        public static extractFlowControl(jsonPacket: any): IMaxDataFrame {
+
+            return {
+                maximum: jsonPacket["tcp.window_size"],
+                frame_type: QUICFrameTypeName.max_data
+            }
         }
 
         public static extractAckHeader(jsonPacket: any): IAckFrame {
